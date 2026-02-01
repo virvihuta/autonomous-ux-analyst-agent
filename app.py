@@ -14,7 +14,7 @@ from config import settings
 # Config
 st.set_page_config(
     page_title="Reverse Engineering System",
-    page_icon="⚙️",
+    page_icon="🔧",
     layout="wide"
 )
 
@@ -40,7 +40,7 @@ st.markdown("""
 
 
 def main():
-    st.title("⚙️ Web Reverse Engineering System")
+    st.title("Web Reverse Engineering System")
     st.caption("Enterprise functional decomposition and architecture analysis")
     st.divider()
     
@@ -58,7 +58,7 @@ def main():
         st.divider()
         st.info("**Scope:** System auto-discovers all templates via sitemap analysis")
         
-        analyze_btn = st.button("🚀 Start Analysis", type="primary", use_container_width=True)
+        analyze_btn = st.button("Start Analysis", type="primary", use_container_width=True)
     
     # Main
     if analyze_btn and target_url:
@@ -114,7 +114,7 @@ def run_analysis(url: str, headless: bool):
         display_results(arch)
         
     except Exception as e:
-        st.error(f"❌ Analysis failed: {e}")
+        st.error(f"Analysis failed: {e}")
         st.exception(e)
     finally:
         loop.close()
@@ -122,7 +122,7 @@ def run_analysis(url: str, headless: bool):
 
 def display_results(arch):
     """Display results."""
-    st.success("✓ Analysis Complete")
+    st.success("Analysis Complete")
     
     # Metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -140,37 +140,85 @@ def display_results(arch):
     
     st.divider()
     
-    # Specs
+    # Specs - Handle both dict and object formats
     st.subheader("Functional Specifications")
     
+    # Count successful vs failed
+    success_count = sum(1 for s in arch.template_specs if isinstance(s, dict) and s.get('status') != 'failed')
+    failed_count = len(arch.template_specs) - success_count
+    
+    if failed_count > 0:
+        st.warning(f"Warning: {failed_count} template(s) failed to analyze. Check logs for details.")
+    
     for spec in arch.template_specs:
-        with st.expander(f"📄 {spec.template_pattern} ({spec.page_template_type})"):
+        # Handle both dict and Pydantic model
+        if isinstance(spec, dict):
+            template_pattern = spec.get('template_pattern', 'unknown')
+            template_name = spec.get('template_name', 'Unknown')
+            status = spec.get('status', 'success')
             
-            # Layout
-            st.markdown("**Layout:**")
-            st.write(f"Grid: {spec.layout_structure.grid_system}")
-            st.write(f"Sections: {', '.join(spec.layout_structure.main_sections)}")
+            # Show status indicator
+            status_indicator = "[SUCCESS]" if status == "success" else "[FAILED]"
             
-            # Interactions
-            if spec.interactive_components:
-                st.markdown("**Components:**")
-                for comp in spec.interactive_components[:3]:
-                    st.code(f"""
-Name: {comp.name}
-Location: {comp.location}
-Triggers: {', '.join(comp.trigger_events[:2])}
-                    """)
-            
-            # Design
-            st.markdown("**Design System:**")
-            st.write(f"Primary: {spec.design_system.primary_color}")
-            st.write(f"Font: {spec.design_system.font_family}")
-            
-            # Screenshot
-            if spec.screenshot_path:
-                img_path = Path(spec.screenshot_path)
-                if img_path.exists():
-                    st.image(str(img_path), width=400)
+            with st.expander(f"{status_indicator} {template_pattern} ({template_name})"):
+                
+                if status == "failed":
+                    st.error(f"Analysis failed: {spec.get('error_message', 'Unknown error')}")
+                    st.write(f"URL: {spec.get('analyzed_url', 'N/A')}")
+                    continue
+                
+                # Layout
+                layout_engine = spec.get('layout_engine', 'unknown')
+                st.markdown("**Layout:**")
+                st.write(f"Engine: {layout_engine}")
+                
+                # Design System
+                design = spec.get('design_system', {})
+                if design:
+                    st.markdown("**Design System:**")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"Primary Color: {design.get('primary_color', 'N/A')}")
+                        st.write(f"Background: {design.get('background_color', 'N/A')}")
+                    with col2:
+                        st.write(f"Text Color: {design.get('text_color', 'N/A')}")
+                        st.write(f"Font: {design.get('font_family', 'N/A')}")
+                
+                # Components
+                components = spec.get('components', [])
+                if components:
+                    st.markdown(f"**Components ({len(components)}):**")
+                    for idx, comp in enumerate(components[:5]):  # Show first 5
+                        with st.container():
+                            st.markdown(f"**{idx+1}. {comp.get('name', 'Unnamed')}**")
+                            st.write(f"Location: {comp.get('location', 'N/A')}")
+                            st.write(f"Function: {comp.get('functionality', 'N/A')}")
+                            
+                            if comp.get('trigger_events'):
+                                st.write(f"Events: {', '.join(comp['trigger_events'][:3])}")
+                    
+                    if len(components) > 5:
+                        st.info(f"+ {len(components) - 5} more components (see JSON export)")
+                
+                # Screenshot
+                screenshot_path = spec.get('screenshot_path')
+                if screenshot_path:
+                    img_path = Path(screenshot_path)
+                    if img_path.exists():
+                        st.markdown("**Screenshot:**")
+                        st.image(str(img_path), width=600)
+        
+        else:
+            # Fallback for Pydantic models (shouldn't happen but just in case)
+            with st.expander(f"Template: {spec.template_pattern} ({spec.template_name})"):
+                st.json(spec.model_dump())
+    
+    st.divider()
+    
+    # Tech Stack
+    if arch.tech_stack:
+        st.subheader("Technology Stack")
+        st.json(arch.tech_stack)
     
     st.divider()
     
@@ -179,11 +227,23 @@ Triggers: {', '.join(comp.trigger_events[:2])}
     json_data = arch.model_dump_json(indent=2)
     
     st.download_button(
-        "📥 Download Blueprint (JSON)",
+        "Download Blueprint (JSON)",
         json_data,
         file_name=f"architecture_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
         mime="application/json"
     )
+    
+    # Summary stats
+    st.divider()
+    st.subheader("Analysis Summary")
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Success Rate", f"{(success_count/len(arch.template_specs)*100):.0f}%")
+    with col2:
+        st.metric("Successful", success_count)
+    with col3:
+        st.metric("Failed", failed_count)
 
 
 if __name__ == "__main__":
