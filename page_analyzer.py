@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 from playwright.async_api import Page
 from langchain_openai import ChatOpenAI
-from langchain.schema import HumanMessage
+from langchain_core.messages import HumanMessage
 import logging
 
 from models import PageAnalysis, NavigationAction
@@ -123,11 +123,13 @@ Return a JSON object:
 Be strategic and efficient in your exploration.
 """
     
-    def __init__(self, llm_model: str = "gpt-4-vision-preview", temperature: float = 0.3, max_tokens: int = 4000):
+    def __init__(self, llm_model: str = "gpt-4o-mini", temperature: float = 0.3, max_tokens: int = 4000, api_key: str = None):
+        from config import settings
         self.llm = ChatOpenAI(
             model=llm_model,
             temperature=temperature,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            api_key=api_key or settings.openai_api_key
         )
     
     async def capture_page_state(self, page: Page) -> Dict[str, Any]:

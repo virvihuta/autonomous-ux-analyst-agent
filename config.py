@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
     # LLM Configuration
     openai_api_key: str = ""
-    llm_model: str = "gpt-4-vision-preview"
+    llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4000
     
