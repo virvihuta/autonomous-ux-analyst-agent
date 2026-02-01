@@ -8,7 +8,9 @@ from .schemas import (
     NavigationItem,
     TechnicalDetails,
     FunctionalSpec,
-    SiteArchitecture
+    SiteArchitecture,
+    ComponentSpec,
+    PageBlueprint
 )
 
 __all__ = [
@@ -20,5 +22,7 @@ __all__ = [
     'NavigationItem',
     'TechnicalDetails',
     'FunctionalSpec',
-    'SiteArchitecture'
+    'SiteArchitecture',
+    'ComponentSpec',
+    'PageBlueprint'
 ]

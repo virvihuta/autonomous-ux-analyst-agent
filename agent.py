@@ -5,6 +5,7 @@ Enterprise-grade architecture analysis system.
 import asyncio
 import time
 import json
+import random
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -64,7 +65,7 @@ class ReverseEngineeringAgent:
             templates = self.detector.detect_templates(urls)
             logger.info(f"Identified {len(templates)} templates")
             
-            # Phase 4: Analyze templates
+            # Phase 4: Analyze templates with concurrency control
             if progress_callback:
                 progress_callback(0.35, "Analyzing functional specifications...")
             
@@ -72,32 +73,73 @@ class ReverseEngineeringAgent:
             templates_to_analyze = templates[:settings.max_templates_to_analyze]
             template_specs = []
             
-            for idx, template in enumerate(templates_to_analyze):
-                rep_url = self.detector.get_representative_url(template)
-                if not rep_url:
-                    continue
+            # Concurrency control
+            semaphore = asyncio.Semaphore(3)  # Max 3 concurrent analyses
+            completed = 0
+            total_to_analyze = len(templates_to_analyze)
+            
+            async def analyze_with_semaphore(idx: int, template):
+                """Analyze template with concurrency control."""
+                nonlocal completed
                 
-                progress = 0.35 + (0.55 * (idx / len(templates_to_analyze)))
-                if progress_callback:
-                    progress_callback(
-                        progress,
-                        f"Analyzing {idx+1}/{len(templates_to_analyze)}: {template.template_type}"
-                    )
-                
-                try:
-                    await self.browser.navigate(rep_url)
-                    await asyncio.sleep(2)
+                async with semaphore:
+                    rep_url = self.detector.get_representative_url(template)
+                    if not rep_url:
+                        return None
                     
-                    spec = await self.analyzer.analyze(
-                        page,
-                        template.pattern,
-                        settings.screenshots_dir
-                    )
-                    template_specs.append(spec)
+                    progress = 0.35 + (0.55 * (completed / total_to_analyze))
+                    if progress_callback:
+                        progress_callback(
+                            progress,
+                            f"Analyzing {completed+1}/{total_to_analyze}: {template.template_type}"
+                        )
                     
-                except Exception as e:
-                    logger.error(f"Failed to analyze {rep_url}: {e}")
-                    continue
+                    try:
+                        await self.browser.navigate(rep_url)
+                        await asyncio.sleep(2)
+                        
+                        spec_data = await self.analyzer.analyze(
+                            page,
+                            template.pattern,
+                            settings.screenshots_dir
+                        )
+                        
+                        completed += 1
+                        logger.info(f"✓ Completed {template.pattern}")
+                        
+                        # Rate limiting
+                        await asyncio.sleep(random.uniform(2, 5))
+                        
+                        return spec_data
+                        
+                    except Exception as e:
+                        logger.error(f"✗ Failed {template.pattern}: {e}")
+                        completed += 1
+                        
+                        # Return failed spec
+                        return {
+                            'template_name': template.template_type,
+                            'template_pattern': template.pattern,
+                            'layout_engine': 'unknown',
+                            'design_system': {
+                                'primary_color': '#000000',
+                                'background_color': '#ffffff',
+                                'text_color': '#000000',
+                                'font_family': 'unknown',
+                                'button_style': 'unknown'
+                            },
+                            'components': [],
+                            'analyzed_url': rep_url,
+                            'status': 'failed',
+                            'error_message': str(e)
+                        }
+            
+            # Execute analyses concurrently
+            tasks = [analyze_with_semaphore(idx, t) for idx, t in enumerate(templates_to_analyze)]
+            results = await asyncio.gather(*tasks)
+            
+            # Filter out None results
+            template_specs = [r for r in results if r is not None]
             
             # Phase 5: Global analysis
             if progress_callback:

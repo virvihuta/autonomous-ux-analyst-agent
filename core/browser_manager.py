@@ -56,24 +56,57 @@ class BrowserManager:
         
         logger.info("Browser initialized")
         
-    async def navigate(self, url: str) -> None:
-        """Navigate with error handling."""
-        try:
-            await self.page.goto(url, wait_until='networkidle', timeout=self.timeout)
-            await asyncio.sleep(1)
-            await self._dismiss_popups()
-            logger.info(f"Navigated to {url}")
-        except Exception as e:
-            logger.error(f"Navigation failed for {url}: {e}")
-            raise
+    async def navigate(self, url: str, retries: int = 2) -> None:
+        """Navigate with error handling and retries."""
+        last_error = None
+        
+        for attempt in range(retries):
+            try:
+                logger.info(f"Navigating to {url} (attempt {attempt + 1}/{retries})")
+                
+                # Try with networkidle first (most reliable but slower)
+                try:
+                    await self.page.goto(url, wait_until='networkidle', timeout=30000)
+                except Exception as e:
+                    logger.warning(f"networkidle failed, trying 'load': {e}")
+                    # Fallback to 'load' (faster, less strict)
+                    await self.page.goto(url, wait_until='load', timeout=20000)
+                
+                # Give page time to settle
+                await asyncio.sleep(2)
+                
+                # Dismiss popups
+                await self._dismiss_popups()
+                
+                logger.info(f"Successfully navigated to {url}")
+                return
+                
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Navigation attempt {attempt + 1} failed: {e}")
+                
+                if attempt < retries - 1:
+                    logger.info(f"Retrying in 3 seconds...")
+                    await asyncio.sleep(3)
+                else:
+                    logger.error(f"All navigation attempts failed for {url}")
+                    raise last_error
     
     async def _dismiss_popups(self) -> None:
         """Auto-dismiss cookie banners and popups."""
         selectors = [
             'button:has-text("Accept")',
             'button:has-text("Accept all")',
+            'button:has-text("Accept All")',
             'button:has-text("I agree")',
-            '[aria-label*="Accept"]'
+            'button:has-text("I Agree")',
+            '[aria-label*="Accept"]',
+            '[aria-label*="accept"]',
+            'button:has-text("OK")',
+            'button:has-text("Close")',
+            '.cookie-accept',
+            '#cookie-accept',
+            '.accept-cookies'
         ]
         
         for selector in selectors:
@@ -82,6 +115,7 @@ class BrowserManager:
                 if await element.is_visible(timeout=2000):
                     await element.click(timeout=2000)
                     await asyncio.sleep(0.5)
+                    logger.info(f"Dismissed popup: {selector}")
                     break
             except:
                 continue

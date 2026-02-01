@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     browser_headless: bool = True
     browser_viewport_width: int = 1920
     browser_viewport_height: int = 1080
-    browser_timeout: int = 30000
+    browser_timeout: int = 50000
     use_stealth_mode: bool = True
     
     # Crawler settings

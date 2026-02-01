@@ -95,6 +95,32 @@ class FunctionalSpec(BaseModel):
     analysis_timestamp: datetime = Field(default_factory=datetime.now)
 
 
+# NEW MODELS FOR REPLICATION FOCUS
+
+class ComponentSpec(BaseModel):
+    """Individual component specification for replication."""
+    name: str
+    location: str
+    functionality: str
+    data_inputs: List[str] = Field(default_factory=list)
+    trigger_events: List[str] = Field(default_factory=list)
+
+
+class PageBlueprint(BaseModel):
+    """Replication blueprint for a page template."""
+    template_name: str
+    template_pattern: str
+    layout_engine: str
+    design_system: DesignSystem
+    components: List[ComponentSpec]
+    
+    # Metadata
+    analyzed_url: str
+    status: str = "success"
+    error_message: Optional[str] = None
+    analysis_timestamp: datetime = Field(default_factory=datetime.now)
+
+
 class SiteArchitecture(BaseModel):
     """Complete site architecture blueprint."""
     target_url: HttpUrl
@@ -106,7 +132,7 @@ class SiteArchitecture(BaseModel):
     templates: List[URLTemplate]
     
     # Specifications
-    template_specs: List[FunctionalSpec]
+    template_specs: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Global
     global_navigation: List[NavigationItem] = Field(default_factory=list)
