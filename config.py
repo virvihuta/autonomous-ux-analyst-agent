@@ -1,33 +1,38 @@
 """
-Configuration management for the UX Analysis Agent.
+Enterprise configuration management.
 """
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 from pathlib import Path
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
+    """Application configuration."""
     
-    # LLM Configuration
+    # OpenAI API
     openai_api_key: str = ""
-    llm_model: str = "gpt-4o-mini"
-    llm_temperature: float = 0.3
-    llm_max_tokens: int = 4000
+    llm_model: str = "gpt-4o"
+    llm_temperature: float = 0.0
+    llm_max_tokens: int = 8000
     
-    # Browser Configuration
-    browser_headless: bool = False
+    # Browser settings
+    browser_headless: bool = True
     browser_viewport_width: int = 1920
     browser_viewport_height: int = 1080
     browser_timeout: int = 30000
-    
-    # Analysis Configuration
-    max_pages_to_explore: int = 5
-    screenshot_quality: int = 80
-    max_navigation_depth: int = 3
-    
-    # Stealth Configuration
     use_stealth_mode: bool = True
+    
+    # Crawler settings
+    max_urls_to_discover: int = 500
+    max_crawl_depth: int = 2
+    crawl_timeout_seconds: int = 300
+    
+    # Analysis settings
+    max_templates_to_analyze: int = 20
+    screenshot_quality: int = 85
+    
+    # Storage
+    reports_dir: Path = Path("reports")
+    screenshots_dir: Path = Path("screenshots")
     
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -35,21 +40,11 @@ class Settings(BaseSettings):
         extra="ignore"
     )
     
-    def validate_settings(self) -> bool:
-        """Validate that required settings are present."""
-        if not self.openai_api_key:
-            raise ValueError(
-                "OPENAI_API_KEY is required. Please set it in .env file or environment variable."
-            )
-        return True
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Create directories
+        self.reports_dir.mkdir(exist_ok=True)
+        self.screenshots_dir.mkdir(exist_ok=True)
 
 
-# Initialize settings
-try:
-    settings = Settings()
-except Exception as e:
-    # Provide helpful error message
-    print(f"Error loading settings: {e}")
-    print("\nPlease create a .env file with the following variables:")
-    print("OPENAI_API_KEY=your-api-key-here")
-    raise
+settings = Settings()
