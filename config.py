@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     # OpenAI API
     openai_api_key: str = ""
-    llm_model: str = "gpt-4o"
+    llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.0
     llm_max_tokens: int = 8000
     
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     browser_headless: bool = True
     browser_viewport_width: int = 1920
     browser_viewport_height: int = 1080
-    browser_timeout: int = 50000
+    browser_timeout: int = 45000  # Increased to 45 seconds
     use_stealth_mode: bool = True
     
     # Crawler settings

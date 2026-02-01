@@ -95,9 +95,36 @@ class ReverseEngineeringAgent:
                         )
                     
                     try:
+                        # Navigate to page
                         await self.browser.navigate(rep_url)
                         await asyncio.sleep(2)
                         
+                        # Check if it's a 404 page BEFORE analyzing
+                        title = await page.title()
+                        content = await page.content()
+                        
+                        if self._is_404_page(title, content, rep_url):
+                            logger.warning(f"Skipping 404 page: {rep_url}")
+                            completed += 1
+                            
+                            return {
+                                'template_name': '404 Error Page',
+                                'template_pattern': template.pattern,
+                                'layout_engine': 'N/A',
+                                'design_system': {
+                                    'primary_color': '#000000',
+                                    'background_color': '#ffffff',
+                                    'text_color': '#000000',
+                                    'font_family': 'N/A',
+                                    'button_style': 'N/A'
+                                },
+                                'components': [],
+                                'analyzed_url': rep_url,
+                                'status': 'skipped',
+                                'error_message': 'Page is a 404 error'
+                            }
+                        
+                        # Analyze with LLM
                         spec_data = await self.analyzer.analyze(
                             page,
                             template.pattern,
@@ -176,6 +203,36 @@ class ReverseEngineeringAgent:
             
         finally:
             await self.browser.close()
+    
+    def _is_404_page(self, title: str, content: str, url: str) -> bool:
+        """Detect if page is a 404 error page."""
+        title_lower = title.lower()
+        content_lower = content.lower()
+        
+        # Common 404 indicators
+        error_keywords = [
+            '404',
+            'not found',
+            'page not found',
+            "page can't be found",
+            "page could not be found",
+            'page does not exist',
+            "couldn't find",
+            "can't find that page"
+        ]
+        
+        # Check title
+        if any(keyword in title_lower for keyword in error_keywords):
+            return True
+        
+        # Check content (first 2000 chars for performance)
+        content_sample = content_lower[:2000]
+        
+        # Look for common 404 patterns in HTML
+        if '404' in content_sample and ('not found' in content_sample or 'error' in content_sample):
+            return True
+        
+        return False
     
     async def _extract_global_nav(self, page) -> list:
         """Extract global navigation."""

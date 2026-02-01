@@ -4,6 +4,7 @@ LLM-powered functional specification extractor.
 import base64
 import json
 import re
+import asyncio
 from typing import Dict, Any
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -98,28 +99,41 @@ class FunctionalAnalyzer:
         try:
             logger.info(f"Analyzing: {template_pattern}")
             
+            # Check if page is a 404 error
+            url = page.url
+            title = await page.title()
+            
+            # Detect 404 pages
+            if self._is_404_page(title, url):
+                logger.warning(f"Skipping 404 page: {url}")
+                return {
+                    'template_name': '404 Error Page (Skipped)',
+                    'template_pattern': template_pattern,
+                    'layout_engine': 'N/A',
+                    'design_system': {
+                        'primary_color': '#000000',
+                        'background_color': '#ffffff',
+                        'text_color': '#000000',
+                        'font_family': 'N/A',
+                        'button_style': 'N/A'
+                    },
+                    'components': [],
+                    'analyzed_url': url,
+                    'status': 'skipped',
+                    'error_message': 'Page is a 404 error page'
+                }
+            
             # Capture state
             screenshot_b64 = await self._capture_screenshot(page)
             dom = await self._extract_dom(page)
-            url = page.url
             
             # Save screenshot
             screenshot_path = output_dir / f"screenshot_{template_pattern.replace('/', '_')}.png"
             screenshot_bytes = base64.b64decode(screenshot_b64)
             screenshot_path.write_bytes(screenshot_bytes)
             
-            # Analyze with LLM
-            prompt = REVERSE_ENGINEERING_PROMPT.format(dom=dom, url=url)
-            
-            response = await self.llm.ainvoke([
-                HumanMessage(content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}}
-                ])
-            ])
-            
-            # Parse JSON
-            spec_data = self._extract_json(response.content)
+            # Analyze with LLM (with retry for rate limits)
+            spec_data = await self._analyze_with_retry(screenshot_b64, dom, url)
             
             # Add metadata
             spec_data['template_pattern'] = template_pattern
@@ -148,6 +162,58 @@ class FunctionalAnalyzer:
                 'status': 'failed',
                 'error_message': str(e)
             }
+    
+    def _is_404_page(self, title: str, url: str) -> bool:
+        """Detect if page is a 404 error page."""
+        title_lower = title.lower()
+        
+        # Common 404 indicators in title
+        error_keywords = [
+            '404',
+            'not found',
+            'page not found',
+            'error',
+            'oops',
+            "can't find",
+            'does not exist'
+        ]
+        
+        return any(keyword in title_lower for keyword in error_keywords)
+    
+    async def _analyze_with_retry(self, screenshot_b64: str, dom: str, url: str, max_retries: int = 3) -> Dict:
+        """Analyze with LLM with retry logic for rate limits."""
+        prompt = REVERSE_ENGINEERING_PROMPT.format(dom=dom, url=url)
+        
+        for attempt in range(max_retries):
+            try:
+                response = await self.llm.ainvoke([
+                    HumanMessage(content=[
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{screenshot_b64}"}}
+                    ])
+                ])
+                
+                # Parse JSON
+                return self._extract_json(response.content)
+                
+            except Exception as e:
+                error_str = str(e)
+                
+                # Check if it's a rate limit error
+                if '429' in error_str or 'rate_limit' in error_str.lower():
+                    if attempt < max_retries - 1:
+                        wait_time = (attempt + 1) * 10  # 10s, 20s, 30s
+                        logger.warning(f"Rate limit hit, waiting {wait_time}s before retry {attempt + 2}/{max_retries}")
+                        await asyncio.sleep(wait_time)
+                        continue
+                    else:
+                        logger.error(f"Rate limit exceeded after {max_retries} attempts")
+                        raise
+                else:
+                    # Not a rate limit error, don't retry
+                    raise
+        
+        raise Exception("Failed after all retries")
     
     async def _capture_screenshot(self, page: Page) -> str:
         """Capture and encode screenshot."""

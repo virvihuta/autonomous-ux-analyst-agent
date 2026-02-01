@@ -14,7 +14,6 @@ from config import settings
 # Config
 st.set_page_config(
     page_title="Reverse Engineering System",
-    page_icon="🔧",
     layout="wide"
 )
 
@@ -143,19 +142,28 @@ def display_results(arch):
     # Specs - Handle both dict and object formats
     st.subheader("Functional Specifications")
     
-    # Count successful vs failed
-    success_count = sum(1 for s in arch.template_specs if isinstance(s, dict) and s.get('status') != 'failed')
-    failed_count = len(arch.template_specs) - success_count
+    # Count successful vs failed vs skipped
+    success_count = sum(1 for s in arch.template_specs if isinstance(s, dict) and s.get('status') == 'success')
+    failed_count = sum(1 for s in arch.template_specs if isinstance(s, dict) and s.get('status') == 'failed')
+    skipped_count = sum(1 for s in arch.template_specs if isinstance(s, dict) and s.get('status') == 'skipped')
+    
+    if skipped_count > 0:
+        st.info(f"Info: {skipped_count} page(s) skipped (404 errors)")
     
     if failed_count > 0:
         st.warning(f"Warning: {failed_count} template(s) failed to analyze. Check logs for details.")
     
+    # Only show successful analyses
     for spec in arch.template_specs:
         # Handle both dict and Pydantic model
         if isinstance(spec, dict):
             template_pattern = spec.get('template_pattern', 'unknown')
             template_name = spec.get('template_name', 'Unknown')
             status = spec.get('status', 'success')
+            
+            # Skip 404 pages in display
+            if status == 'skipped':
+                continue
             
             # Show status indicator
             status_indicator = "[SUCCESS]" if status == "success" else "[FAILED]"
@@ -236,14 +244,17 @@ def display_results(arch):
     # Summary stats
     st.divider()
     st.subheader("Analysis Summary")
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
+    total = len(arch.template_specs)
     with col1:
-        st.metric("Success Rate", f"{(success_count/len(arch.template_specs)*100):.0f}%")
+        st.metric("Total", total)
     with col2:
         st.metric("Successful", success_count)
     with col3:
         st.metric("Failed", failed_count)
+    with col4:
+        st.metric("Skipped (404s)", skipped_count)
 
 
 if __name__ == "__main__":
